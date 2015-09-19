@@ -7,4 +7,5 @@
 #files
 !*.cpp
 !*.h
+!*.hh
 !*.hpp

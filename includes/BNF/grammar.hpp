@@ -5,17 +5,19 @@
 #ifndef COMPILEDBNFWRITER_GRAMMAR_HPP
 #define COMPILEDBNFWRITER_GRAMMAR_HPP
 
-#include <bits/stringfwd.h>
+#include <memory>
+
+#include "BNF/nodes.hh"
 
 namespace cBNF {
-    class Node;
 
     /**
      * Grammar containing all rules
      */
     template <typename ... rules>
     class Grammar {
-        cBNF::Node* parse(const std::string&);
+        std::shared_ptr<cBNF::Node> parse(const std::string& data);
+        std::shared_ptr<cBNF::Node> parse_from_file(const std::string& path);
     };
 
 
@@ -81,15 +83,20 @@ namespace cBNF {
     /**
      * Node corresponding to [ 'char1'...'char2' ]
      */
-    template <char char1, char char2>
+    template <char character1, char character2>
     struct MatchRange{};
 
     /**
      * Node corresponding to [ 'char1' ]
      */
+    template <char character>
     struct MatchChar{};
 
-
+    /**
+     * Node corresponding to [ ->'char1' ]
+     */
+    template <char char1>
+    struct Until<>
 
     /**
      * Node corresponding to a C string [ '"' Until<'"'> ]
@@ -105,6 +112,11 @@ namespace cBNF {
      * Node corresponding to a number [ ['0'...'9']+ ]
      */
     struct Num : public Repeat< MatchRange<'0', '9'> >{};
+
 };
+
+namespace cBNF {
+
+}
 
 #endif //COMPILEDBNFWRITER_GRAMMAR_HPP
