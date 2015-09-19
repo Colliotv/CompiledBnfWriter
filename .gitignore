@@ -1,0 +1,10 @@
+*
+
+# Folders
+!*/
+
+
+#files
+!*.cpp
+!*.h
+!*.hpp
