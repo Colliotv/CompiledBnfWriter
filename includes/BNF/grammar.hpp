@@ -26,6 +26,9 @@ namespace cBNF {
     template <typename subclass, typename ... rules>
     class Grammar {
     public:
+        using StaticGrammar = Grammar<subclass, rules...>;
+
+    public:
         virtual ~Grammar() = default;
         Grammar(std::map<std::string, std::function<bool (subclass&, cBNF::Node&, cBNF::varTable&)>> && hooks,
                 const std::string &entry);
@@ -224,7 +227,7 @@ namespace cBNF {
             static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 std::shared_ptr<cBNF::Node> last_context = parser.getCurrentRuleContext();
                 parser.newRuleContext();
-                std::shared_ptr res = parser.callRule(PPString::value, table);
+                std::shared_ptr<cBNF::Node> res = parser.callRule(PPString::value, table);
                 parser.restoreRuleContext(last_context);
                 return res;
             }
