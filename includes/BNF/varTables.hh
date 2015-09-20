@@ -8,13 +8,23 @@
 #include "BNF/nodes.hh"
 
 namespace cBNF {
+
     class varTable {
     public:
-        inline bool                     has(const std::string& variable) const  { return _context.find(variable) != _context.end(); }
-        inline std::shared_ptr<Node>    operator[](const std::string& variable) { return _context.at(variable); }
+        inline bool                     has(int variable) const  { return _context.find(variable) != _context.end() && !_context.at(variable).expired(); }
+        inline std::shared_ptr<Node>    operator[](int variable) { return _context.at(variable).lock(); }
 
+    public:
+        inline void                     refresh() {
+            for (auto it = _context.begin(); it != _context.end();) {
+                if (it->second.expired())
+                    it = _context.erase(it);
+                else
+                    ++it;
+            }
+        }
     private:
-        std::map<std::string, std::shared_ptr<Node> > _context;
+        std::map<int , std::weak_ptr<Node> > _context;
     };
 }
 

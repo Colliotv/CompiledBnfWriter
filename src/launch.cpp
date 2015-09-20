@@ -6,5 +6,4 @@
 
 
 int main() {
-    cBNF::Rule< cBNF::Id > rule;
 }
