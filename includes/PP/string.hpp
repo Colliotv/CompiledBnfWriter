@@ -42,9 +42,18 @@
     PP_DECAY_STRING_256(litteral_string, i+512),\
     PP_DECAY_STRING_256(litteral_string, i+768),\
 
-#define PPString(literal_string) PP::string_decay< PP::String<>, PP_DECAY_STRING_1024(literal_string, 0), 0 >::value
+#define PP_DECAY_STRING_4096(literal_string, i) \
+    PP_DECAY_STRING_1024(litteral_string, i+0),  \
+    PP_DECAY_STRING_1024(litteral_string, i+1024),\
+    PP_DECAY_STRING_1024(litteral_string, i+2048),\
+    PP_DECAY_STRING_1024(litteral_string, i+3072),\
+
+#define PPString(literal_string) PP::string_decay< PP::String<>, PP_DECAY_STRING_4096(literal_string, 0), 0 >::value
 
 namespace PP { // For PreProcessing
+    template <char ... literal_string>
+    class String;
+
     template <char head, char... tail>
     struct SubChar{
         using next = SubChar<tail...>;
@@ -62,7 +71,7 @@ namespace PP { // For PreProcessing
         constexpr static const bool in(char) { return false; }
     };
 
-    template <class PPString, class PPString>
+    template <class, class>
     struct PPStringEqual;
     template <char ... str1, char ... str2>
     struct PPStringEqual< PP::String<str1...>, PP::String<str2...> >    { static const bool value = false; };
@@ -77,9 +86,9 @@ namespace PP { // For PreProcessing
         constexpr static char       get(int i) { return SubChar<literal_string...>::get(i);}
         constexpr static const int  find(char c) { return SubChar<literal_string...>::find(c, 0); }
         constexpr static const int  find_last_of(char c) { return SubChar<literal_string...>::find_last_of(c); }
-        constexpr static const bool in(char c) { return SubChar<literal_string>::in(c); }
-        template <typename PPStringComp>
-        struct                      equal { static const value = PPStringEqual< String<literal_string...>, PPStringComp >::value; };
+        constexpr static const bool in(char c) { return SubChar<literal_string...>::in(c); }
+        template <class PPStringComp>
+        struct                      equal { static const bool value = PPStringEqual< String<literal_string...>, PPStringComp >::value; };
     };
 
     template< class string, char ... litteral_string>       struct string_decay;
