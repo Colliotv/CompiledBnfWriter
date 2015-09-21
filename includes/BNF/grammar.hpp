@@ -22,64 +22,72 @@ namespace cBNF {
     struct EofException : public std::exception {
         virtual const char *what() const noexcept override { return "End of File"; }
     };
+
     /**
      * Grammar containing all rules
      */
-    template <typename subclass, typename ... rules>
+    template<typename subclass, typename ... rules>
     class Grammar {
     public:
         using StaticGrammar = Grammar<subclass, rules...>;
 
     public:
         virtual ~Grammar() = default;
-        Grammar(std::map<std::string, std::function<bool (subclass&, cBNF::Node&, cBNF::varTable&)>> && hooks,
+
+        Grammar(std::map<std::string, std::function<bool(subclass &, cBNF::Node &, cBNF::varTable &)>> &&hooks,
                 const std::string &entry);
 
     private:
-        std::map< std::string, std::function< std::shared_ptr<cBNF::Node> (subclass&, cBNF::varTable&)> >
-                                _rules;
-        std::string             _entry;
+        std::map<std::string, std::function<std::shared_ptr<cBNF::Node>(subclass &, cBNF::varTable &)> >
+                _rules;
+        std::string _entry;
 
     public:
-        std::shared_ptr<cBNF::Node> callRule(const std::string& rule_name, cBNF::varTable& table) {
-            return _rules.at(rule_name)(*this, table);
+        std::shared_ptr<cBNF::Node> callRule(const std::string &rule_name, cBNF::varTable &table) {
+            return _rules.at(rule_name)(*dynamic_cast<subclass*>(this), table);
         }//need a compile time verifier
 
     private:
         std::shared_ptr<cBNF::Node>
-                                _rule_context;
-        std::map< std::string, std::function<bool (subclass&, cBNF::Node&, cBNF::varTable&)> >
-                                _hooks;
+                _rule_context;
+        std::map<std::string, std::function<bool(subclass &, cBNF::Node &, cBNF::varTable &)> >
+                _hooks;
     public:
         std::shared_ptr<cBNF::Node> getCurrentRuleContext() { return _rule_context; }
-        void                        restoreRuleContext(std::shared_ptr<cBNF::Node>& node) { _rule_context = node; }
-        void                        newRuleContext() { _rule_context.reset(new cBNF::Node); }
-        bool                        callHook(const std::string& hook_name, cBNF::varTable& table) {
-            _hooks[hook_name](*dynamic_cast<subclass*>(this), _rule_context, table);
+
+        void restoreRuleContext(std::shared_ptr<cBNF::Node> &node) { _rule_context = node; }
+
+        void newRuleContext() { _rule_context.reset(new cBNF::Node); }
+
+        bool callHook(const std::string &hook_name, cBNF::varTable &table) {
+            _hooks[hook_name](*dynamic_cast<subclass *>(this), _rule_context, table);
         }
 
     private:
-        std::string             _ignored;
+        std::string _ignored;
 
     public:
-        bool                    isIgnored(char c) { return _ignored.find(c); }
-        void                    setIgnored(const std::string &_ignored) { Grammar::_ignored = _ignored; }
+        bool isIgnored(char c) { return _ignored.find(c) != std::string::npos; }
+
+        void setIgnored(const std::string &_ignored) { Grammar::_ignored = _ignored; }
 
     private:
-        std::string             stream_buffer;
-        std::string::iterator   stream_cursor;
+        std::string stream_buffer;
+        std::string::iterator stream_cursor;
 
     public:
         using Context = std::string::iterator;
 
     public:
-        bool        eof() { return stream_cursor == stream_buffer.end(); }
-        char        eatChar() {
+        bool eof() { return stream_cursor == stream_buffer.end(); }
+
+        char eatChar() {
             if (stream_cursor == stream_buffer.end())
                 throw EofException();
             char c = *stream_cursor;
             return (++stream_cursor, c);
         }
+
         std::string eatString(std::size_t string_size) {
             if (std::distance(stream_cursor, stream_buffer.end()) < string_size)
                 throw EofException();
@@ -88,128 +96,132 @@ namespace cBNF {
             std::advance(stream_cursor, string_size);
             return std::string(beg, stream_cursor);
         }
+
     public:
-        Context     getContext() { return  stream_cursor; }
-        void        restoreContext(Context context) { stream_cursor = context; }
+        Context getContext() { return stream_cursor; }
+
+        void restoreContext(Context context) { stream_cursor = context; }
+
+    public:
+        std::shared_ptr<cBNF::Node> parse(const std::string&);
     };
 
 
     /**
      * Rule with its own definition rule ::= [grammar_node]
      */
-    template <literal_string PPString, typename grammar_node>
+    template<literal_string PPString, typename grammar_node>
     struct Rule {
         using name = PPString;
     };
 
 
-
-
-    /**
-     * Node corresponding to [grammar_node]+
-     */
-    template <typename grammar_node>
-    struct Repeat{};
-
-    /**
-     * Node corresponding to [grammar_node]*
-     */
-    template <typename grammar_node>
-    struct PRepeat{};
-
-    /**
-     * Node corresponding to [ grammar_node | grammar_node | .... ]
-     */
-    template <typename ... grammar_nodes>
-    struct Or{};
-
-    /**
-     * Node corresponding to [ grammar_node grammar_node .... ]
-     */
-    template <typename ... grammar_nodes >
-    struct And{};
-
-
-
-    /**
-     * node corresponding to [ grammar_node:var# ]
-     */
-    template <typename grammar_node, literal_string PPString>
-    struct Extract{};
-
-    /**
-     * node corresponding to [ grammar_node #call_hook(context, variables)]
-     */
-    template <typename grammar_node, literal_string PPString>
-    struct Callback{};
-
-
-    /**
-     * Node Corresponding to [ Id ]
-     */
-    template <literal_string PPString>
-    struct MatchRule{};
-
-
-    /**
-     * node corresponding to @ignore('char', 'char', 'char', ...)
-     * variations are : IgnoreNull, IgnoreBlanks(default)
-     */
-    template < typename grammar_node, char ... characters>
-    struct Ignore{};
-    template< typename grammar_node >
-    struct IgnoreNUll: public Ignore<grammar_node> {};
-    template< typename grammar_node >
-    struct IgnoreBlanks : public Ignore<grammar_node, ' ', '\n', '\t', '\r'>{};
-
-
-
-    /**
-     * Node corresponding to [ 'char1'...'char2' ]
-     */
-    template <char character1, char character2>
-    struct MatchRange{};
-
-    /**
-     * Node corresponding to [ 'char1' ]
-     */
-    template <char character>
-    struct MatchChar{};
-
-    /**
-     * Node corresponding to [ "string" ]
-     */
-    template< literal_string PPString>
-    struct MatchString{};
-
-
-
-    /**
-     * Node corresponding to [ ->'char1' ]
-     */
-    template <char char1>
-    struct Until{};
-
-    /**
-     * Node corresponding to a C string [ '"' Until<'"'> ]
-     */
-    struct String{};
-
-    /**
-     * Node corresponding to an id [ ['a'...'z' | 'A'...'Z']+ ['a'...'z' | 'A'...'Z' | '0'...'9']* ]
-     */
-    struct Id : public And< Repeat< Or< MatchRange< 'a', 'z'>, MatchRange<'A', 'Z'> > >, PRepeat< Or< MatchRange<'a', 'z'>, MatchRange<'0', '9'>, MatchRange<'A', 'Z'> > > >{};
-
-    /**
-     * Node corresponding to a number [ ['0'...'9']+ ]
-     */
-    struct Num : public Repeat< MatchRange<'0', '9'> >{};
-
-    /**
-     * Node corresponfing to an eof [ eof ]
-     */
-    struct Eof {};
 };
+
+/**
+ * Node corresponding to [grammar_node]+
+ */
+template <typename grammar_node>
+struct Repeat{};
+
+/**
+ * Node corresponding to [grammar_node]*
+ */
+template <typename grammar_node>
+struct PRepeat{};
+
+/**
+ * Node corresponding to [ grammar_node | grammar_node | .... ]
+ */
+template <typename ... grammar_nodes>
+struct Or{};
+
+/**
+ * Node corresponding to [ grammar_node grammar_node .... ]
+ */
+template <typename ... grammar_nodes >
+struct And{};
+
+
+
+/**
+ * node corresponding to [ grammar_node:var# ]
+ */
+template <typename grammar_node, literal_string PPString>
+struct Extract{};
+
+/**
+ * node corresponding to [ grammar_node #call_hook(context, variables)]
+ */
+template <typename grammar_node, literal_string PPString>
+struct Callback{};
+
+
+/**
+ * Node Corresponding to [ Id ]
+ */
+template <literal_string PPString>
+struct MatchRule{};
+
+
+/**
+ * node corresponding to @ignore('char', 'char', 'char', ...)
+ * variations are : IgnoreNull, IgnoreBlanks(default)
+ */
+template < typename grammar_node, char ... characters>
+struct Ignore{};
+template< typename grammar_node >
+struct IgnoreNUll: public Ignore<grammar_node> {};
+template< typename grammar_node >
+struct IgnoreBlanks : public Ignore<grammar_node, ' ', '\n', '\t', '\r'>{};
+
+
+
+/**
+ * Node corresponding to [ 'char1'...'char2' ]
+ */
+template <char character1, char character2>
+struct MatchRange{};
+
+/**
+ * Node corresponding to [ 'char1' ]
+ */
+template <char character>
+struct MatchChar{};
+
+/**
+ * Node corresponding to [ "string" ]
+ */
+template< literal_string PPString>
+struct MatchString{};
+
+
+
+/**
+ * Node corresponding to [ ->'char1' ]
+ */
+template <char char1>
+struct Until{};
+
+/**
+ * Node corresponding to a C string [ '"' Until<'"'> ]
+ */
+struct String{};
+
+/**
+ * Node corresponding to an id [ ['a'...'z' | 'A'...'Z']+ ['a'...'z' | 'A'...'Z' | '0'...'9']* ]
+ */
+using Id = And< Repeat< Or< MatchRange< 'a', 'z'>, MatchRange<'A', 'Z'> > >, PRepeat< Or< MatchRange<'a', 'z'>, MatchRange<'0', '9'>, MatchRange<'A', 'Z'> > > >;
+
+/**
+ * Node corresponding to a number [ ['0'...'9']+ ]
+ */
+using Num = Repeat< MatchRange<'0', '9'> >;
+
+/**
+ * Node corresponfing to an eof [ eof ]
+ */
+struct Eof {};
 
 namespace cBNF {
     namespace tree {
@@ -226,7 +238,7 @@ namespace cBNF {
                         if (!valid)
                             return (parser.restoreContext(context), nullptr);
                         else
-                            return std::make_shared<cBNF::Node>(context, parser.getContext());
+                            return std::make_shared<cBNF::Node>(std::string(context, parser.getContext()));
                     }
                     valid = true;
                 }
@@ -239,7 +251,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename Parser::Context context(parser.getContext());
                 while (for_<Parser, grammar_node>::do_(parser, table));
-                return std::make_shared<cBNF::Node>(context, parser.getContext());
+                return std::make_shared<cBNF::Node>(std::string(context, parser.getContext()));
             }
         };
 
@@ -259,7 +271,9 @@ namespace cBNF {
         struct for_<Parser, Or<grammar_nodes...>>{
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context(parser.getContext());
-                while (parser.isIgnored(parser.eatChar()));
+                try {
+                    while (parser.isIgnored(parser.eatChar()));
+                } catch (EofException) { return (parser.restoreContext(context), nullptr); }
                 typename Parser::Context subcontext(parser.getContext());
                 if (!or_<Parser, grammar_nodes...>::do_(parser, table))
                     return (parser.restoreContext(context), nullptr);
@@ -283,7 +297,9 @@ namespace cBNF {
         struct for_<Parser, And<grammar_nodes...>>{
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context(parser.getContext());
-                while (parser.isIgnored(parser.eatChar()));
+                try {
+                    while (parser.isIgnored(parser.eatChar()));
+                } catch (EofException) { return (parser.restoreContext(context), nullptr); }
                 typename Parser::Context subcontext(parser.getContext());
                 if (!and_<Parser, grammar_nodes...>::do_(parser, table))
                     return (parser.restoreContext(context), nullptr);
@@ -310,7 +326,7 @@ namespace cBNF {
 
                 if (!node)
                     return nullptr;
-                if (parser.call(PPString::value))
+                if (parser.callRule(PPString::value, table))
                     return node;
                 return nullptr;
             }
@@ -410,7 +426,7 @@ namespace cBNF {
         template <class Parser>
         struct for_<Parser, Eof> {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
-                while (parser.isIgnored(parser.getChar()));
+                while (parser.isIgnored(parser.eatChar()));
                 if (not parser.eof()) return nullptr;
                 return std::make_shared<cBNF::Node>();
             }
@@ -431,9 +447,18 @@ namespace cBNF {
     Grammar(std::map<std::string, std::function<bool(subclass &, cBNF::Node&, cBNF::varTable&)>> && hooks,
            const std::string &entry) : _entry(entry), _hooks(hooks),
                _rules({
-                    std::make_pair( rules::name::value, cBNF::tree::_rule<subclass, rules>::_entry )...
+                    std::make_pair( rules::name::value,
+                                    std::function<std::shared_ptr<cBNF::Node>(subclass &, cBNF::varTable &)>(cBNF::tree::_rule<subclass, rules>::_entry) )...
                 }) {}
 
+    template<typename subclass, typename ... rules>
+    std::shared_ptr<cBNF::Node> cBNF::Grammar<subclass, rules...>::parse(const std::string& string) {
+        varTable    table;
+        this->_ignored = "";
+        this->stream_buffer = string;
+        this->stream_cursor = this->stream_buffer.begin();
+        return callRule(_entry, table);
+    }
 }
 
 #endif //COMPILEDBNFWRITER_GRAMMAR_HPP

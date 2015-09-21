@@ -11,8 +11,8 @@ namespace cBNF {
 
     class varTable {
     public:
-        inline bool                     has(int variable) const  { return _context.find(variable) != _context.end() && !_context.at(variable).expired(); }
-        inline std::shared_ptr<Node>    operator[](int variable) { return _context.at(variable).lock(); }
+        inline bool                     has(const std::string& variable) const  { return _context.find(variable) != _context.end() && !_context.at(variable).expired(); }
+        inline std::shared_ptr<Node>    operator[](const std::string& variable) { return _context.at(variable).lock(); }
 
     public:
         inline void                     refresh() {
@@ -24,7 +24,7 @@ namespace cBNF {
             }
         }
     private:
-        std::map<int , std::weak_ptr<Node> > _context;
+        std::map<std::string , std::weak_ptr<Node> > _context;
     };
 }
 
