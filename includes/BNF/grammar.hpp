@@ -60,7 +60,7 @@ namespace cBNF {
         void newRuleContext() { _rule_context.reset(new cBNF::Node); }
 
         bool callHook(const std::string &hook_name, cBNF::varTable &table) {
-            _hooks[hook_name](*dynamic_cast<subclass *>(this), _rule_context, table);
+            return _hooks[hook_name](*dynamic_cast<subclass *>(this), *_rule_context, table);
         }
 
     private:
@@ -81,6 +81,11 @@ namespace cBNF {
     public:
         bool eof() { return stream_cursor == stream_buffer.end(); }
 
+        char pickChar() {
+            if (stream_cursor == stream_buffer.end())
+                throw EofException();
+            return *stream_cursor;
+        }
         char eatChar() {
             if (stream_cursor == stream_buffer.end())
                 throw EofException();
@@ -262,9 +267,11 @@ namespace cBNF {
         template<class Parser, typename grammar_node, typename ... tail>
         struct or_<Parser, grammar_node, tail...> {
             inline static bool do_(Parser& parser, cBNF::varTable& table) {
+                typename  Parser::Context context(parser.getContext());
                 if (for_<Parser, grammar_node>::do_(parser, table))
                     return true;
-                return or_<Parser, tail...>::do_(parser, table);
+                parser.restoreContext(context);
+                return (parser.restoreContext(context), or_<Parser, tail...>::do_(parser, table));
             }
         };
         template <class Parser, typename ... grammar_nodes>
@@ -272,7 +279,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context(parser.getContext());
                 try {
-                    while (parser.isIgnored(parser.eatChar()));
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                 } catch (EofException) { return (parser.restoreContext(context), nullptr); }
                 typename Parser::Context subcontext(parser.getContext());
                 if (!or_<Parser, grammar_nodes...>::do_(parser, table))
@@ -298,7 +305,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context(parser.getContext());
                 try {
-                    while (parser.isIgnored(parser.eatChar()));
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                 } catch (EofException) { return (parser.restoreContext(context), nullptr); }
                 typename Parser::Context subcontext(parser.getContext());
                 if (!and_<Parser, grammar_nodes...>::do_(parser, table))
@@ -314,7 +321,7 @@ namespace cBNF {
 
                 if (!node)
                     return nullptr;
-                table[PPString::value] = node;
+                table.insert(PPString::value, node);
                 return node;
             }
         };
@@ -326,7 +333,7 @@ namespace cBNF {
 
                 if (!node)
                     return nullptr;
-                if (parser.callRule(PPString::value, table))
+                if (parser.callHook(PPString::value, table))
                     return node;
                 return nullptr;
             }
@@ -356,9 +363,9 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.eatChar()));
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                     char c = parser.eatChar();
-                    if (c < c2 && c > c1)
+                    if (c <= c2 && c >= c1)
                         return std::make_shared<cBNF::Node>(std::string(1, c));
                 }catch (EofException) {}
                 return (parser.restoreContext(context), nullptr);
@@ -370,7 +377,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename  Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.eatChar()));
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                     if (parser.eatChar() == c)
                         return std::make_shared<cBNF::Node>(std::string(1, c));
                 } catch (EofException) {}
@@ -398,7 +405,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.eatChar()));
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                     typename Parser::Context subcontext = parser.getContext();
                     if (parser.eatChar() != '"')
                         return (parser.restoreContext(context), nullptr);
@@ -426,7 +433,7 @@ namespace cBNF {
         template <class Parser>
         struct for_<Parser, Eof> {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
-                while (parser.isIgnored(parser.eatChar()));
+                while (parser.isIgnored(parser.pickChar())) parser.eatChar();
                 if (not parser.eof()) return nullptr;
                 return std::make_shared<cBNF::Node>();
             }
@@ -454,7 +461,7 @@ namespace cBNF {
     template<typename subclass, typename ... rules>
     std::shared_ptr<cBNF::Node> cBNF::Grammar<subclass, rules...>::parse(const std::string& string) {
         varTable    table;
-        this->_ignored = "";
+        this->_ignored = { ' ', '\n', '\t', '\v', '\f', '\r'};
         this->stream_buffer = string;
         this->stream_cursor = this->stream_buffer.begin();
         return callRule(_entry, table);

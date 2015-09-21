@@ -12,6 +12,7 @@ namespace cBNF {
     class varTable {
     public:
         inline bool                     has(const std::string& variable) const  { return _context.find(variable) != _context.end() && !_context.at(variable).expired(); }
+        inline void                     insert(const std::string& variable, std::shared_ptr<cBNF::Node>& node) { _context.emplace(variable, std::weak_ptr<cBNF::Node>(node)); }
         inline std::shared_ptr<Node>    operator[](const std::string& variable) { return _context.at(variable).lock(); }
 
     public:
