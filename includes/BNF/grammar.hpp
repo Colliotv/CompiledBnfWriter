@@ -216,6 +216,57 @@ namespace cBNF {
         template<typename Parser, class ParserNode>
         struct for_;
 
+        template<class Parser, typename grammar_node>
+        struct for_<Parser, Repeat<grammar_node>>{
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
+                bool valid(false);
+                typename Parser::Context context(parser.getContext());
+                do {
+                    if (!for_<Parser, grammar_node>::do_(parser, table)) {
+                        if (!valid)
+                            return (parser.restoreContext(context), nullptr);
+                        else
+                            return std::make_shared<cBNF::Node>(context, parser.getContext());
+                    }
+                    valid = true;
+                }
+                while (1);
+            }
+        };
+
+        template<class Parser, typename grammar_node>
+        struct for_<Parser, PRepeat<grammar_node>>{
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
+                typename Parser::Context context(parser.getContext());
+                while (for_<Parser, grammar_node>::do_(parser, table));
+                return std::make_shared<cBNF::Node>(context, parser.getContext());
+            }
+        };
+
+        template<class Parser, typename ... tail>
+        struct or_;
+        template <class Parser>
+        struct or_<Parser> { inline static bool do_(Parser&, cBNF::varTable&) { return false; }};
+        template<class Parser, typename grammar_node, typename ... tail>
+        struct or_<Parser, grammar_node, tail...> {
+            inline static bool do_(Parser& parser, cBNF::varTable& table) {
+                if (for_<Parser, grammar_node>::do_(parser, table))
+                    return true;
+                return or_<Parser, tail...>::do_(parser, table);
+            }
+        };
+        template <class Parser, typename ... grammar_nodes>
+        struct for_<Parser, Or<grammar_nodes...>>{
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
+                typename  Parser::Context context(parser.getContext());
+                while (parser.isIgnored(parser.eatChar()));
+                typename Parser::Context subcontext(parser.getContext());
+                if (!or_<Parser, grammar_nodes...>::do_(parser, table))
+                    return (parser.restoreContext(context), nullptr);
+                return std::make_shared<cBNF::Node>(std::string(subcontext, parser.getContext()));
+            }
+        };
+
         template<class Parser, typename ... tail>
         struct and_;
         template <class Parser>
@@ -279,7 +330,7 @@ namespace cBNF {
         template <class Parser, typename grammar_node, char ... characters>
         struct for_<Parser, Ignore<grammar_node, characters...> >{
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
-                parser.setIgnored(std::string({characters...}));
+                parser.setIgnored(PP::String<characters...>::value);
                 return for_<Parser, grammar_node>::do_(parser, table);
             }
         };
