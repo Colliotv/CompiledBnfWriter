@@ -2,6 +2,8 @@
 // Created by collio_v on 9/20/15.
 //
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "InfiniteRecursion"
 #ifndef COMPILEDBNFWRITER_STRING_HPP
 #define COMPILEDBNFWRITER_STRING_HPP
 
@@ -37,9 +39,9 @@
     PP_DECAY_STRING_64(literal_string, i+192) \
 
 #define makePPString(literal_string) PP::string_decay< PP::String<>, PP_DECAY_STRING_256(literal_string, 0), 0 >::value
-
+#define literal_string typename
 namespace PP { // For PreProcessing
-    template <char ... literal_string>
+    template <char ... literal_string_>
     class String;
 
     template <char head, char... tail>
@@ -85,29 +87,29 @@ namespace PP { // For PreProcessing
     template <int beg, int end>
     struct PPStringSplitBeg<beg, end, PP::String<> > { using result = PP::String<>; };
 
-    template<class PPString, char ... literal_string>
+    template<class PPString, char ... literal_string_>
     struct PPStringAdd;
-    template<char ... literal_string1, char ... literal_string2>
-    struct PPStringAdd<PP::String<literal_string1...>, literal_string2...> { using result = typename PP::String< literal_string1..., literal_string2...>; };
+    template<char ... literal_string_1, char ... literal_string_2>
+    struct PPStringAdd<PP::String<literal_string_1...>, literal_string_2...> { using result = typename PP::String< literal_string_1..., literal_string_2...>; };
 
-    template <char ... literal_string>
+    template <char ... literal_string_>
     class String {
     public:
         static const std::string value;
 
-        constexpr static char       get(int i) { return SubChar<literal_string..., 0>::get(i);}
-        constexpr static const int  find(char c) { return SubChar<literal_string..., 0>::find(c, 0); }
-        constexpr static const int  find_last_of(char c) { return SubChar<literal_string..., 0>::find_last_of(c); }
-        constexpr static const bool in(char c) { return SubChar<literal_string..., 0>::in(c); }
+        constexpr static char       get(int i) { return SubChar<literal_string_..., 0>::get(i);}
+        constexpr static const int  find(char c) { return SubChar<literal_string_..., 0>::find(c, 0); }
+        constexpr static const int  find_last_of(char c) { return SubChar<literal_string_..., 0>::find_last_of(c); }
+        constexpr static const bool in(char c) { return SubChar<literal_string_..., 0>::in(c); }
         template <class PPStringComp>
-        struct                      equal { static const bool value = PPStringEqual< String<literal_string...>, PPStringComp >::value; };
+        struct                      equal { static const bool value = PPStringEqual< String<literal_string_...>, PPStringComp >::value; };
         template <int beg, int end>
-        struct                      split { using result = typename PPStringSplitBeg<beg, end, PP::String<literal_string...> >::result; };
+        struct                      split { using result = typename PPStringSplitBeg<beg, end, PP::String<literal_string_...> >::result; };
         template <class PPStringAdded>
-        struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string...>::result; };
+        struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string_...>::result; };
     };
 
-    template< class string, char ... literal_string>       struct string_decay;
+    template< class string, char ... literal_string_>       struct string_decay;
     template< char ... valid, char head, char ... tail >    struct string_decay< PP::String< valid... >, head, tail...>
     { using value = typename string_decay< String<valid..., head>, tail...>::value; };
     template< char ... valid, char ... tail>                struct string_decay< PP::String< valid...>, 0, tail...>
@@ -116,8 +118,10 @@ namespace PP { // For PreProcessing
     /**
      * The dynamic value
      */
-    template <char ... literal_string >
-    const std::string String<literal_string ... >::value({ literal_string... });
+    template <char ... literal_string_ >
+    const std::string String<literal_string_ ... >::value({ literal_string_... });
 }
 
 #endif //COMPILEDBNFWRITER_STRING_HPP
+
+#pragma clang diagnostic pop
