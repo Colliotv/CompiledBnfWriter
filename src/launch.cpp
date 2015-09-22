@@ -24,5 +24,8 @@ public:
 
 int main() {
     GrammarTest grammar;
+    std::cout << makePPString(" *[ id ] ")::get(cBNF::AutoGen<makePPString(" *[ id ] ")>::size) << std::endl;
+    std::cout << makePPString(" [ ")::get(makePPString(" [ ")::find('[')) << std::endl;
+    std::cout << makePPString(" tt i")::find_first_not_of_s<makePPString(" t")>() << std::endl;
     std::cout << std::boolalpha << (bool)grammar.parse(" test2 ") << std::endl;
 }

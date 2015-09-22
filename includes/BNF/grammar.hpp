@@ -133,7 +133,7 @@ struct Repeat{};
  * Node corresponding to [grammar_node]*
  */
 template <typename grammar_node>
-struct PRepeat{};
+struct PossibleRepeat {};
 
 /**
  * Node corresponding to [ grammar_node | grammar_node | .... ]
@@ -216,7 +216,7 @@ struct String{};
 /**
  * Node corresponding to an id [ ['a'...'z' | 'A'...'Z']+ ['a'...'z' | 'A'...'Z' | '0'...'9']* ]
  */
-using Id = And< Repeat< Or< MatchRange< 'a', 'z'>, MatchRange<'A', 'Z'> > >, PRepeat< Or< MatchRange<'a', 'z'>, MatchRange<'0', '9'>, MatchRange<'A', 'Z'> > > >;
+using Id = And< Repeat< Or< MatchRange< 'a', 'z'>, MatchRange<'A', 'Z'> > >, PossibleRepeat< Or< MatchRange<'a', 'z'>, MatchRange<'0', '9'>, MatchRange<'A', 'Z'> > > >;
 
 /**
  * Node corresponding to a number [ ['0'...'9']+ ]
@@ -252,7 +252,7 @@ namespace cBNF {
         };
 
         template<class Parser, typename grammar_node>
-        struct for_<Parser, PRepeat<grammar_node>>{
+        struct for_<Parser, PossibleRepeat<grammar_node>>{
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
                 typename Parser::Context context(parser.getContext());
                 while (for_<Parser, grammar_node>::do_(parser, table));
@@ -433,9 +433,10 @@ namespace cBNF {
         template <class Parser>
         struct for_<Parser, Eof> {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
-                while (parser.isIgnored(parser.pickChar())) parser.eatChar();
-                if (not parser.eof()) return nullptr;
-                return std::make_shared<cBNF::Node>();
+                try {
+                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                }catch(EofException) { return std::make_shared<cBNF::Node>(); }
+                return nullptr;
             }
         };
 
@@ -467,6 +468,80 @@ namespace cBNF {
         return callRule(_entry, table);
     }
 }
+
+namespace cBNF {
+    template<literal_string name>
+    struct PredefinedRule{ using result = MatchRule<name>; };
+    template<>
+    struct PredefinedRule<makePPString("id")>{ using result = Id; };
+    template<>
+    struct PredefinedRule<makePPString("num")>{ using result = Num; };
+    template<>
+    struct PredefinedRule<makePPString("eof")>{ using result = Eof; };
+
+    template<char head, literal_string PPString>
+    struct Match {
+        using name = typename PPString:: template split< 0, PPString:: template find_first_not_of_s<makePPString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")>() >:: result;
+        using result = typename PredefinedRule<name>::result;
+        constexpr static const int size = name::size;
+    };
+
+    template<literal_string PPString>
+    struct Match<'*', PPString> {
+        using result = PossibleRepeat< typename Match<
+                PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+        >::result >;
+        constexpr static const int _subsize =
+                Match<
+                        PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                        typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+                >::size;
+        constexpr static const int size = PPString::find(']', PPString::find_first_not_of(' ', PPString::find('[') + 1) + _subsize) + 1;
+    };
+
+    template<literal_string PPString>
+    struct Match<'+', PPString> {
+        using result = Repeat< typename Match<
+                PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+        >::result >;
+        constexpr static const int _subsize =
+                Match<
+                        PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                        typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+                >::size;
+        constexpr static const int size = PPString::find(']', PPString::find_first_not_of(' ', PPString::find('[') + 1) + _subsize) + 1;
+    };
+
+    template<literal_string PPString>
+    struct Match<'&', PPString>;
+
+    template<literal_string PPString>
+    struct Match<'|', PPString>;
+
+    template<literal_string PPString>
+    struct Match<'#', PPString>;
+
+    template<literal_string PPString>
+    struct Match<':', PPString>;
+
+    template<literal_string PPString>
+    struct AutoGen;
+
+    template<char ... literal_string_>
+    struct AutoGen< PP::String< literal_string_... > > {
+        using result =
+            typename Match<   PP::String<literal_string_...>::get(PP::String<literal_string_...>::find_first_not_of(' ')),
+                typename PP::String<literal_string_...>:: template split<PP::String<literal_string_...>::find_first_not_of(' '), sizeof...(literal_string_)>::result
+            >::result;
+        constexpr static const int _subsize =
+            Match<   PP::String<literal_string_...>::get(PP::String<literal_string_...>::find_first_not_of(' ')),
+                typename PP::String<literal_string_...>:: template split<PP::String<literal_string_...>::find_first_not_of(' '), sizeof...(literal_string_)>::result
+            >::size;
+        constexpr static const int size = _subsize + PP::String< literal_string_... >::find_first_not_of(' ');
+    };
+};
 
 #endif //COMPILEDBNFWRITER_GRAMMAR_HPP
 
