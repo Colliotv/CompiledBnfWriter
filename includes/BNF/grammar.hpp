@@ -115,8 +115,18 @@ namespace cBNF {
     /**
      * Rule with its own definition rule ::= [grammar_node]
      */
+    template<literal_string PPString>
+    struct AutoGen;
+
     template<literal_string PPString, typename grammar_node>
     struct Rule {
+        using entry = grammar_node;
+        using name = PPString;
+    };
+
+    template<literal_string PPString, char ... literal_string_>
+    struct Rule< PPString, PP::String<literal_string_...> > {
+        using entry = typename AutoGen< PP::String<literal_string_...> >::result;
         using name = PPString;
     };
 
@@ -445,7 +455,7 @@ namespace cBNF {
         template<typename Parser, typename name, typename inner>
         struct _rule< Parser, Rule<name, inner> > {
             inline static std::shared_ptr<cBNF::Node> _entry(Parser &parser, cBNF::varTable & table) {
-                return for_<Parser, inner>::do_(parser, table);
+                return for_<Parser, typename Rule<name, inner>::entry >::do_(parser, table);
             };
         };
     }
@@ -525,9 +535,6 @@ namespace cBNF {
 
     template<literal_string PPString>
     struct Match<':', PPString>;
-
-    template<literal_string PPString>
-    struct AutoGen;
 
     template<char ... literal_string_>
     struct AutoGen< PP::String< literal_string_... > > {
