@@ -2,6 +2,7 @@
 
 # Folders
 !*/
+CmakeFiles
 !.gitignore
 
 #files

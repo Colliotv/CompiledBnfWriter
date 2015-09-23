@@ -8,16 +8,16 @@
 
 class GrammarTest : public cBNF::Grammar<GrammarTest,
         cBNF::Rule<makePPString("entry"), makePPString("#test[ :id[ second ] ]")>,
-        cBNF::Rule<makePPString("second"), makePPString("*[ |[ \"test\" \"test2\" ] ]")>
+        cBNF::Rule<makePPString("second"), makePPString("&[ id :var[ id ] ]")>
                 > {
 public:
     GrammarTest()
-        : Grammar({
+            : Grammar({
             {"test", [](GrammarTest&, cBNF::Node& context, cBNF::varTable& table) -> bool {
-                std::cout << "called ? {" << table["id"]->value() << "}" << std::endl;
-                return true;
+              std::cout << "called ? {" << table["id"]->value() << "}" << std::endl;
+              return true;
             }}
-        }, "entry") { }
+    }, "entry") { }
 };
 
 int main() {
