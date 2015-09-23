@@ -3,6 +3,7 @@
 //
 
 #pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #pragma ide diagnostic ignored "InfiniteRecursion"
 #ifndef COMPILEDBNFWRITER_STRING_HPP
 #define COMPILEDBNFWRITER_STRING_HPP
@@ -38,7 +39,7 @@
     PP_DECAY_STRING_64(literal_string, i+128), \
     PP_DECAY_STRING_64(literal_string, i+192) \
 
-#define makePPString(literal_string) PP::string_decay< PP::String<>, PP_DECAY_STRING_256(literal_string, 0), 0 >::value
+#define makePPString(literal_string) PP::string_decay_result< PP_DECAY_STRING_256(literal_string, 0), 0 >
 #define literal_string typename
 namespace PP { // For PreProcessing
     template <char ... literal_string_>
@@ -93,14 +94,14 @@ namespace PP { // For PreProcessing
     template <int beg, int len>
     struct PPStringSplitBeg<beg, len, PP::String<> > { using result = PP::String<>; };
 
-    template<class PPString, char ... literal_string_>
+    template<class PPString, char ...>
     struct PPStringAdd;
     template<char ... literal_string_1, char ... literal_string_2>
     struct PPStringAdd<PP::String<literal_string_1...>, literal_string_2...> { using result = typename PP::String< literal_string_1..., literal_string_2...>; };
 
     template<int , literal_string , char ...>
     struct PPStringFind;
-    template<bool verif, int it, literal_string PPStringIn, char ... literal_string_>
+    template<bool, int it, literal_string PPStringIn, char ... literal_string_>
     struct PPStringFindVerifier;
     template<int it, literal_string PPStringIn, char ... literal_string_>
     struct PPStringFindVerifier<true, it, PPStringIn, literal_string_...> {constexpr static const int value = it;};
@@ -125,8 +126,8 @@ namespace PP { // For PreProcessing
 
         constexpr static char       get(int i) { return SubChar<literal_string_..., 0>::get(i);}
         constexpr static const int  find(char c, int off = 0) { return SubChar<literal_string_..., 0>::find(c, off, 0); }
-        template<literal_string PPStringIn>
-        struct                      find_s { constexpr static const int value = PPStringFind<0, PPStringIn, literal_string_...>::value; };
+        //template<literal_string PPStringIn>
+        //struct                      find_s { constexpr static const int value = PPStringFind<0, PPStringIn, literal_string_...>::value; };
         constexpr static const int  find_first_not_of(char c, int off = 0) { return SubChar<literal_string_..., 0>::find_first_not_of(c, off, 0); }
         template<literal_string PPStringFind>
         constexpr static const int  find_first_not_of_s(int off = 0) { return SubChar<literal_string_..., 0>:: template find_first_not_of_s<PPStringFind>(off, 0); }
@@ -136,8 +137,8 @@ namespace PP { // For PreProcessing
         struct                      equal { static const bool value = PPStringEqual< String<literal_string_...>, PPStringComp >::value; };
         template <int beg, int len>
         struct                      split { using result = typename PPStringSplitBeg<beg, len, PP::String<literal_string_...> >::result; };
-        template <class PPStringAdded>
-        struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string_...>::result; };
+        //template <class PPStringAdded>
+        //struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string_...>::result; };
     };
 
     template< class string, char ... literal_string_>       struct string_decay;
@@ -145,6 +146,8 @@ namespace PP { // For PreProcessing
     { using value = typename string_decay< String<valid..., head>, tail...>::value; };
     template< char ... valid, char ... tail>                struct string_decay< PP::String< valid...>, 0, tail...>
     { using value = typename PP::String<valid...>; };
+    template< char ... literal_string_ >
+    using string_decay_result = typename string_decay<PP::String<>, literal_string_...>::value;
 
     /**
      * The dynamic value
