@@ -146,6 +146,12 @@ template <typename grammar_node>
 struct PossibleRepeat {};
 
 /**
+ * Node corresponding to [grammar_node]?
+ */
+template <typename grammar_node>
+struct PossibleMatch{};
+
+/**
  * Node corresponding to [ grammar_node | grammar_node | .... ]
  */
 template <typename ... grammar_nodes>
@@ -275,6 +281,22 @@ namespace cBNF {
               } catch (EofException) { }
               typename Parser::Context subcontext(parser.getContext());
               while (for_<Parser, grammar_node>::do_(parser, table)) matched = true;
+              if (matched)
+                  return std::make_shared<cBNF::Node>(std::string(subcontext, parser.getContext()));
+              return (parser.restoreContext(context), std::make_shared<cBNF::Node>());
+          }
+        };
+
+        template<class Parser, typename grammar_node>
+        struct for_<Parser, PossibleMatch<grammar_node>>{
+          inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
+              typename Parser::Context    context(parser.getContext());
+              bool                        matched(false);
+              try {
+                  while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+              } catch (EofException) { }
+              typename Parser::Context subcontext(parser.getContext());
+              if (for_<Parser, grammar_node>::do_(parser, table)) matched = true;
               if (matched)
                   return std::make_shared<cBNF::Node>(std::string(subcontext, parser.getContext()));
               return (parser.restoreContext(context), std::make_shared<cBNF::Node>());
@@ -425,6 +447,7 @@ namespace cBNF {
           }
         };
 
+
         template<class Parser>
         struct for_<Parser, String>{
           inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
@@ -519,6 +542,20 @@ namespace cBNF {
 
     template<literal_string PPString>
     struct Match<'*', PPString> {
+      using result = PossibleRepeat< typename Match<
+              PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+              typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+      >::result >;
+      constexpr static const int _subsize =
+              Match<
+                      PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                      typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+              >::size;
+      constexpr static const int size = PPString::find(']', PPString::find_first_not_of(' ', PPString::find('[') + 1) + _subsize) + 1;
+    };
+
+    template<literal_string PPString>
+    struct Match<'?', PPString> {
       using result = PossibleRepeat< typename Match<
               PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
               typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result

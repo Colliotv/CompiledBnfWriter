@@ -7,8 +7,8 @@
 
 
 class GrammarTest : public cBNF::Grammar<GrammarTest,
-        cBNF::Rule<makePPString("entry"), makePPString("#test[ :id[ second ] ]")>,
-        cBNF::Rule<makePPString("second"), makePPString("&[ id :var[ id ] ]")>
+        cBNF::Rule<makePPString("entry"), makePPString("&[ #test[ :id[ second ] ] eof ]")>,
+        cBNF::Rule<makePPString("second"), makePPString("?[ &[ id :var[ id ]  ?[ num ] ] ]")>
                 > {
 public:
     GrammarTest()
@@ -26,5 +26,5 @@ int main() {
     std::cout << makePPString(" *[ id ] ")::get(cBNF::AutoGen<makePPString(" *[ id ] ")>::size) << std::endl;
     std::cout << makePPString(" [ ")::get(makePPString(" [ ")::find('[')) << std::endl;
     std::cout << makePPString(" tt i")::find_first_not_of_s<makePPString(" t")>() << std::endl;
-    std::cout << std::boolalpha << (bool)grammar.parse(" tttt ttt ") << std::endl;
+    std::cout << std::boolalpha << (bool)grammar.parse(" tttt ttt 123 ") << std::endl;
 }
