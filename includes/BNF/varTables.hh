@@ -5,7 +5,7 @@
 #ifndef COMPILEDBNFWRITER_VARTABLES_H
 #define COMPILEDBNFWRITER_VARTABLES_H
 
-#include "BNF/nodes.hh"
+#include "../BNF/nodes.hh"
 
 namespace cBNF {
 

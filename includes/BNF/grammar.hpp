@@ -14,10 +14,10 @@
 #include <cxxabi.h>
 #include <list>
 
-#include "BNF/nodes.hh"
-#include "BNF/nodes.hh"
-#include "PP/string.hpp"
-#include "varTables.hh"
+#include "../BNF/nodes.hh"
+#include "../BNF/nodes.hh"
+#include "../PP/string.hpp"
+#include "../BNF/varTables.hh"
 
 namespace cBNF {
 
