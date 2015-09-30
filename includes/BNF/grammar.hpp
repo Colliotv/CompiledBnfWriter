@@ -30,8 +30,9 @@ namespace cBNF {
      * BaseGrammar
      *  containing child classes
      */
+    template<typename ... subclasses> class Grammar;
     template<typename base_subclass, typename ... parent_subclasses>
-    class Grammar {
+    class Grammar<base_subclass, parent_subclasses...> {
     private:
         using _this_type = Grammar<base_subclass, parent_subclasses...>;
     public:
@@ -113,8 +114,10 @@ namespace cBNF {
     /**
      * GrammarTable containing all rules
      */
+    template<typename ...>
+    class GrammarTable;
     template<typename _subclass, typename ... rules>
-    class GrammarTable {
+    class GrammarTable<_subclass, rules...> {
     public:
         using subclass = _subclass;
         using StaticGrammar = GrammarTable<subclass, rules...>;
@@ -130,7 +133,8 @@ namespace cBNF {
 
     private:
         std::string _entry;
-
+    public:
+        const std::string getEntry() { return _entry; }
     public:
         template<typename ... subclasses>
         std::shared_ptr<cBNF::Node> callRule(Grammar<subclasses...>& grammar, const std::string &rule_name, cBNF::varTable &table) {
@@ -139,10 +143,6 @@ namespace cBNF {
         std::shared_ptr<cBNF::Node> callRule(subclass& grammar, const std::string &rule_name, cBNF::varTable &table) {
             return _rules.at(rule_name)(grammar, table);
         }//need a compile time verifier
-        template<typename ... subclasses>
-        std::shared_ptr<cBNF::Node> callEntryRule(Grammar<subclasses...>& grammar, cBNF::varTable& table) {
-            return _rules.at(_entry)(dynamic_cast<_subclass&>(grammar), table);
-        }
     };
 
 
@@ -443,6 +443,18 @@ namespace cBNF {
             }
         };
 
+        template<class Parser, literal_string class_name, literal_string rule_name>
+        struct for_<Parser, MatchOverridedRule<class_name, rule_name> > {
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
+            {
+                std::shared_ptr<cBNF::Node> last_context(parser.getCurrentRuleContext());
+                parser.newRuleContext();
+                std::shared_ptr<cBNF::Node> res(parser.callOveridedRule(parser, class_name::value, rule_name::value, table));
+                parser.restoreRuleContext(last_context);
+                return res;
+            }
+        };
+
         template<class Parser, typename grammar_node, char ... characters>
         struct for_<Parser, Ignore<grammar_node, characters...> > {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
@@ -563,34 +575,36 @@ namespace cBNF {
     }
 };
 namespace cBNF {
-    template <typename ... subclasses>
+    template<typename grammar, typename grammarTable>
+    struct ImplementationVerifier;
+    template <typename grammar, typename ... subclasses>
     struct _fill;
 
-    template <>
-    struct _fill<> {
+    template <typename grammar>
+    struct _fill<grammar> {
         template<typename p1, typename p2, typename p3>
         static void add_rule(p1, p2, p3){}
         };
-    template <typename head, typename ... tail>
-    struct _fill<head, tail...> {
+    template <typename grammar_type, typename head, typename ... tail>
+    struct _fill<grammar_type, head, tail...> {
+        static_assert(ImplementationVerifier<grammar_type, decltype(head::grammar)>::value >= 0, "verifying methode call and implementation");
         template<typename ... subclasses>
         static void add_rule(Grammar<subclasses...>& _class,
                 std::map<std::string, std::function<std::shared_ptr<cBNF::Node> (Grammar<subclasses...>&, cBNF::varTable&)> >&  _rules,
                 std::map<std::string, std::function<std::shared_ptr<cBNF::Node> (const std::string&, Grammar<subclasses...>&, cBNF::varTable&)> >& _overided_rules) {
             auto& _sub_class = dynamic_cast<head&>(_class);
             int status;
-
             for (auto pair : _sub_class.grammar._rules) {
                 _rules.emplace(pair.first,
                         [pair](Grammar<subclasses...>& grammar, cBNF::varTable& table) -> std::shared_ptr<cBNF::Node> {
                           return pair.second(dynamic_cast<head&>(grammar), table);
                         });
             }
-            _overided_rules.emplace(std::string(abi::__cxa_demangle(typeid(head).name(), 0, 0, &status)),
+            _overided_rules.emplace(std::string(abi::__cxa_demangle(typeid(head).name(), 0, 0, &status)).substr(0, std::string(abi::__cxa_demangle(typeid(head).name(), 0, 0, &status)).find('<')),
                     [&_sub_class](const std::string& _rule, Grammar<subclasses...>& _pclass, cBNF::varTable& table) -> std::shared_ptr<cBNF::Node> {
                         return _sub_class.grammar.callRule(_pclass, _rule, table);
                     });
-            _fill<tail...>::add_rule(_class, _rules, _overided_rules);
+            _fill<grammar_type, tail...>::add_rule(_class, _rules, _overided_rules);
         }
     };
 
@@ -610,12 +624,12 @@ namespace cBNF {
     std::shared_ptr<cBNF::Node> cBNF::Grammar<base_class, parent_classes...>::parse(const std::string& string) {
         varTable    table;
         if (_rules.empty()) {
-            _fill<base_class, parent_classes...>::add_rule(dynamic_cast<base_class&>(*this), _rules, _overided_rules);
+            _fill<Grammar<base_class, parent_classes...>, base_class, parent_classes...>::add_rule(dynamic_cast<base_class&>(*this), _rules, _overided_rules);
             this->_ignored = {' ', '\n', '\t', '\v', '\f', '\r'};
         }
         this->stream_buffer = string;
         this->stream_cursor = this->stream_buffer.begin();
-        std::shared_ptr<cBNF::Node> res(dynamic_cast<base_class&>(*this).grammar.callEntryRule(*this, table));
+        std::shared_ptr<cBNF::Node> res(callRule(*this, dynamic_cast<base_class&>(*this).grammar.getEntry(), table));
 
         if (!res || this->stream_cursor != this->stream_buffer.end())
             return nullptr;
@@ -624,22 +638,133 @@ namespace cBNF {
 }
 
 namespace cBNF {
+    template<literal_string name, typename ...>
+    struct SearchRule;
+
     template<literal_string name>
-    struct PredefinedRule{ using result = MatchRule<name>; };
-    template<>
-    struct PredefinedRule<makePPString("id")>{ using result = Id; };
-    template<>
-    struct PredefinedRule<makePPString("num")>{ using result = Num; };
-    template<>
-    struct PredefinedRule<makePPString("eof")>{ using result = Eof; };
-    template<>
-    struct PredefinedRule<makePPString("string")>{ using result = String; };
+    struct SearchRule<name> {
+        constexpr static const bool value = false;
+    };
+    template<literal_string name, typename rule_inner, typename ...tail>
+    struct SearchRule<name, Rule<name, rule_inner>, tail...> {
+        constexpr static const bool value = true;
+    };
+    template< literal_string name, literal_string rule_name, typename rule_inner, typename...tail>
+    struct SearchRule<name, Rule<rule_name, rule_inner>, tail...> {
+        constexpr static const bool value = SearchRule<name, tail...>::value;
+    };
+
+    template<literal_string, class G> class DSearchRule;
+    template<literal_string name, typename childclass, typename ... rules>
+    struct DSearchRule<name, GrammarTable<childclass, rules...> >{
+        constexpr static const bool value = SearchRule<name, rules...>::value;
+    };
+    template<literal_string, class gramar>
+    struct ForEachChildSearch;
+
+    template<literal_string name>
+    struct ForEachChildSearch<name, cBNF::Grammar<>> {
+        constexpr static const bool value = false;
+    };
+
+    template<literal_string name, typename child, typename ... tail>
+    struct ForEachChildSearch< name, cBNF::Grammar<child, tail...> > {
+        constexpr static const bool value =
+                DSearchRule<name, decltype(child::grammar)>::value || ForEachChildSearch<name, cBNF::Grammar<tail...> >::value;
+    };
+
+    template<class R, class check>
+    struct UnmatchedRuleError {
+        static_assert(check::value, "undefined rule (see below)");
+        constexpr static const bool value = check::value;
+    };
+
+    template<typename grammar, typename PotentialRule>
+    struct ListRules{ constexpr static const int value = 0; };
+
+    template<char ... characters, template<typename...> class grammar, typename ... childs>
+    struct ListRules< grammar<childs...>, MatchRule< PP::String<characters...> > > {
+        static_assert(UnmatchedRuleError<PP::String<characters...>, ForEachChildSearch<PP::String<characters...>, grammar<childs...>>>::value, "undefined rule (see below)");
+        constexpr static const int value = 1;
+    };
+
+    template<typename grammar, template<typename > class M, char... characters>
+    struct ListRules<grammar, M< PP::String<characters...> > > {
+        constexpr static const int value = 0;
+    };
+
+    template<typename grammar, template<typename > class R, typename I>
+    struct ListRules<grammar, R<I> > {
+        constexpr static const int value =
+                ListRules<grammar, I>::value;
+    };
+
+    template<typename grammar, template<typename, typename> class R, typename I1, literal_string S2>
+    struct ListRules<grammar, R<I1, S2> > {
+        constexpr static const int value =
+                ListRules<grammar, I1>::value;
+    };
+
+    template<typename grammar, template <typename ...> class AO, typename AOhead, typename ... AOinner>
+    struct ListRules<grammar, AO<AOhead, AOinner...> >{
+        constexpr static const int value =
+                ListRules<grammar, AOhead>::value + ListRules<grammar, AO<AOinner...> >::value;
+    };
+
+    template<typename grammar, template <typename ...> class R>
+    struct ListRules<grammar, R<> >{ constexpr static const int value = 0; };
+
+    template<typename grammar>
+    struct ImplementationVerifier<grammar, GrammarTable<> > {
+        constexpr static const int value = 1;
+    };
+
+    template<typename grammar, typename child, typename ... tail>
+    struct ImplementationVerifier<grammar, GrammarTable< child, tail...> > {
+        constexpr static const int value =
+                    ImplementationVerifier< grammar, GrammarTable<tail...> >::value;
+    };
+    template<typename grammar, typename name, typename inner, typename ... tail>
+    struct ImplementationVerifier<grammar, GrammarTable< Rule<name, inner>, tail... > > {
+        constexpr static const int value = ListRules<grammar, typename Rule<name, inner>::entry >::value
+                + ImplementationVerifier<grammar, GrammarTable<tail...> >::value;
+    };
+
+}
+
+namespace cBNF {
+    template<char c, literal_string name, literal_string PPString>
+    struct RuleCall{
+        using result = MatchRule<name>;
+        constexpr static const int size = name::size;
+    };
+    template<literal_string class_name, literal_string PPString>
+    struct RuleCall<'.', class_name, PPString>{
+        using pre_rule_name = typename PPString:: template split<class_name::size + 1, PPString::size>::result:: template split< 0, PPString::size>::result;
+        using rule_name = typename pre_rule_name:: template split<0, pre_rule_name:: template find_first_not_of_s<makePPString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789")>(pre_rule_name:: template find_first_not_of_s<makePPString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")>()) >:: result;
+        using result = MatchOverridedRule<class_name, rule_name>;
+        constexpr static const int size = class_name::size + 1 + rule_name::size;
+    };
+
+    template<literal_string name, literal_string PPString, int _size>
+    struct PredefinedRule{
+        using result = typename RuleCall<PPString::get(name::size), name, PPString>::result;
+        constexpr static const int size = RuleCall<PPString::get(name::size), name, PPString>::size;
+    };
+    template<literal_string PPString, int _size>
+    struct PredefinedRule<makePPString("id"), PPString, _size>{ using result = Id; constexpr static const int size = _size;};
+    template<literal_string PPString, int _size>
+    struct PredefinedRule<makePPString("num"), PPString, _size>{ using result = Num; constexpr static const int size = _size;};
+    template<literal_string PPString, int _size>
+    struct PredefinedRule<makePPString("eof"), PPString, _size>{ using result = Eof; constexpr static const int size = _size;};
+    template<literal_string PPString, int _size>
+    struct PredefinedRule<makePPString("string"), PPString, _size>{ using result = String; constexpr static const int size = _size;};
 
     template<char head, literal_string PPString>
     struct Match {
         using name = typename PPString:: template split< 0, PPString:: template find_first_not_of_s<makePPString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789")>(PPString:: template find_first_not_of_s<makePPString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")>()) >:: result;
-        using result = typename PredefinedRule<name>::result;
-        constexpr static const int size = name::size;
+        using result = typename PredefinedRule<name, PPString, name::size>::result;
+        constexpr static const int size = PredefinedRule<name, PPString, name::size>::size;
     };
 
     template<literal_string PPString>
@@ -788,7 +913,6 @@ namespace cBNF {
         constexpr static const int size = _subsize + PP::String< literal_string_... >::find_first_not_of(' ');
     };
 };
-
 #endif //COMPILEDBNFWRITER_GRAMMAR_HPP
 
 #pragma clang diagnostic pop

@@ -6,30 +6,44 @@
 #include "BNF/grammar.hpp"
 
 
-class GrammarTest : public cBNF::Grammar<GrammarTest> {
+template <typename ... childs>
+class GrammarParent : public cBNF::Grammar<childs..., GrammarParent<childs...>> {
 public:
-    GrammarTest()
-            : Grammar(), hooks({
-            {"test", [](GrammarTest&, cBNF::Node& context, cBNF::varTable& table) -> bool {
+    GrammarParent()
+            : hooks({
+            {"test", [](GrammarParent&, cBNF::Node& context, cBNF::varTable& table) -> bool {
               std::cout << "called ? {" << table["id"]->value() << "}" << std::endl;
               return true;
             }}
     }), grammar("entry") { }
 
 public:
-    std::map<std::string, std::function<bool(GrammarTest&, cBNF::Node&, cBNF::varTable&)> >
+    std::map<std::string, std::function<bool(GrammarParent&, cBNF::Node&, cBNF::varTable&)> >
             hooks;
-    cBNF::GrammarTable<GrammarTest,
+    cBNF::GrammarTable<GrammarParent,
                        cBNF::Rule<makePPString("entry"), makePPString("&[ #test[ :id[ _second2 ] ] eof ]")>,
                        cBNF::Rule<makePPString("_second2"), makePPString("?[ &[ id :var[ id ]  +[ '0'->'9' ] ] ]")>
         >   grammar;
 
 };
 
-int main() {
-    GrammarTest grammar;
+template<typename ... childs>
+class GrammarChild1 : public GrammarParent<childs..., GrammarChild1<childs...>> {
+public:
+    GrammarChild1() : GrammarParent<GrammarChild1>(), grammar("entry") {  }
 
-    int status = 0;
-    std::cout << std::boolalpha << (bool)grammar.parse(" tttt ttt 123 ") << std::endl;
+public:
+    cBNF::GrammarTable<GrammarChild1,
+                       cBNF::Rule<makePPString("_second2"), makePPString("&[ GrammarParent._second2 \"toto\" ]") >,
+                       cBNF::Rule<makePPString("newRule"), makePPString("&[ ]")>
+    > grammar;
+};
+
+
+int main() {
+    GrammarChild1<> grammar;
+
+    std::cout << cBNF::ListRules<cBNF::Grammar<GrammarChild1<>, GrammarParent<GrammarChild1<>>>, cBNF::Rule<makePPString("entry"), makePPString("&[ _second2 #hook[ entry ] id newRule ]")>::entry >::value << std::endl;
+    std::cout << std::boolalpha << (bool)grammar.parse(" tttt ttt 123 toto ") << std::endl;
     return 0;
 }
