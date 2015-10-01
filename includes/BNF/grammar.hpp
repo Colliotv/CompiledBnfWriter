@@ -25,6 +25,13 @@ namespace cBNF {
         virtual const char *what() const noexcept override { return "End of File"; }
     };
 
+    template<typename grammar_type>
+    struct RegisteredGrammarName;
+
+#define REGISTER_GRAMMAR_NAME(grammar_type) \
+    template<typename ... childs>   struct cBNF::RegisteredGrammarName< grammar_type<childs...> >{\
+        using name = makePPString( #grammar_type ); \
+    };
 
     /**
      * BaseGrammar
@@ -679,8 +686,56 @@ namespace cBNF {
         constexpr static const bool value = check::value;
     };
 
+    template<bool, typename typer, typename typed>
+    struct retain_type;
+
+    template<typename typer, typename typed>
+    struct retain_type<true, typer, typed> {
+        using _type = decltype(typed::grammar);
+    };
+
+    template<typename typer, typename typed>
+    struct retain_type<false, typer, typed> {
+        using _type = typename typer::_type;
+    };
+
+    template<literal_string name, typename grammar>
+    struct ForEachClassSearch;
+
+    template<literal_string name, template<typename ...> class grammar>
+    struct ForEachClassSearch<name, grammar<>> {
+        constexpr static const bool value = false;
+        using _type = void;
+    };
+
+    template<literal_string name, template<typename ...> class grammar, typename head, typename ... tail>
+    struct ForEachClassSearch<name, grammar<head, tail...>> {
+        using _type = typename retain_type<name:: template equal< typename RegisteredGrammarName<head>::name >::value, ForEachClassSearch<name, grammar<tail...> >, head>::_type;
+        constexpr static const bool value = name:: template equal< typename RegisteredGrammarName<head>::name >::value ||
+                ForEachClassSearch<name, grammar<tail...> >::value;
+    };
+
+    template<class R, class check>
+    struct UnmatchedClassError {
+        static_assert(check::value, "undefined class (see below)");
+        constexpr static const bool value = check::value;
+    };
+
+    template<class C, class R, class check>
+    struct UnmatchedORuleError {
+        static_assert(check::value, "undefined call to class rule (see below)");
+        constexpr static const bool value = check::value;
+    };
+
     template<typename grammar, typename PotentialRule>
     struct ListRules{ constexpr static const int value = 0; };
+
+    template<char ... name_c, char ... rule_c, template<typename...> class grammar, typename ... childs>
+    struct ListRules< grammar<childs...>, MatchOverridedRule< PP::String<name_c...>, PP::String<rule_c...> > >{
+        static_assert(UnmatchedClassError< PP::String<name_c...>, ForEachClassSearch< PP::String<name_c...>, grammar<childs...> > >::value, "undefined class (see below)");
+        static_assert(UnmatchedORuleError< PP::String<name_c...>, PP::String<rule_c...>, DSearchRule<PP::String<rule_c...>, typename ForEachClassSearch< PP::String<name_c...>, grammar<childs...> >::_type > >::value, "testing");
+        constexpr static const int value = 1;
+    };
 
     template<char ... characters, template<typename...> class grammar, typename ... childs>
     struct ListRules< grammar<childs...>, MatchRule< PP::String<characters...> > > {
@@ -724,6 +779,7 @@ namespace cBNF {
         constexpr static const int value =
                     ImplementationVerifier< grammar, GrammarTable<tail...> >::value;
     };
+
     template<typename grammar, typename name, typename inner, typename ... tail>
     struct ImplementationVerifier<grammar, GrammarTable< Rule<name, inner>, tail... > > {
         constexpr static const int value = ListRules<grammar, typename Rule<name, inner>::entry >::value
@@ -809,11 +865,32 @@ namespace cBNF {
         constexpr static const int size = PPString::find(']', PPString::find_first_not_of(' ', PPString::find('[') + 1) + _subsize) + 1;
     };
 
+    template<char phead, literal_string _string>
+    struct GetStriped {
+        using result = _string;
+    };
+    template<literal_string _string>
+    struct GetStriped<'\\', _string> {
+        using result = typename _string:: template split<0, _string::size - 1>::result;
+    };
+
+    template<char phead, literal_string _string, literal_string PPString>
+    struct GetString {
+        using result = _string;
+    };
+
+    template<literal_string string, literal_string PPString>
+    struct GetString<'\\', string, PPString> {
+        using value = typename string:: template add< typename PPString::template split<0, PPString::find('"', 1)>::result >::result;
+        using lPPString = typename PPString:: template split<PPString::find('"', 1), PPString::size>::result;
+        using result = typename GetString<value::get(value::size - 1), typename GetStriped<value::get(value::size - 1), value>::result, lPPString >::result;
+    };
+
     template<literal_string PPString>
     struct Match<'"', PPString>{
-        using name = typename PPString:: template split<1, PPString::find('"', 1) - 1>::result;
+        using name = typename GetString<'\\', makePPString(""), typename PPString:: template split<1, PPString::size>::result >::result;
         using result = MatchString< name >;
-        constexpr static const int size = PPString::find('"', 1) + 1;
+        constexpr static const int size = 1 + name::size + 2;
     };
 
     template<literal_string then, literal_string PPString>
@@ -867,8 +944,42 @@ namespace cBNF {
         constexpr static const int size = or_result::size + PPString::find_first_not_of(' ', 2);
     };
 
+    template<typename t1, typename t2>
+    struct StoreVariadic;
+
+    template<template<typename, char...>class U, typename UI, template<char...>class TT, char... TI>
+    struct StoreVariadic< U<UI>, TT<TI...> > {
+        using result = U<UI, TI...>;
+    };
+
+    template<literal_string meta_name, literal_string meta_param, typename then>
+    struct MetaMatch;
+
+    template<literal_string meta_param, typename then>
+    struct MetaMatch<makePPString("ignore"), meta_param, then> {
+        using result = typename StoreVariadic<Ignore<then>, typename meta_param::template strip<','>::result::template strip<'\''>::result >::result;
+    };
+
+    template<typename then>
+    struct MetaMatch<makePPString("ignore"), makePPString("\"null\""), then> {
+        using result = IgnoreNull<then>;
+    };
+
+    template<typename then>
+    struct MetaMatch<makePPString("ignore"), makePPString("\"blanks\""), then> {
+        using result = IgnoreBlanks<then>;
+    };
+
     template<literal_string PPString>
-    struct Match<'@', PPString>;
+    struct Match<'@', PPString> {
+        using meta_name = typename PPString:: template split<1, PPString::find('(', 1) - 1>:: result;
+        using meta_param = typename PPString:: template split<PPString::find('(') + 1, PPString::find(')') - PPString::find('(') - 1>::result;
+        using then = typename PPString::template split<PPString::find(')') + 1, PPString::size>::result;
+        using _then = typename then::template split<then::find_first_not_of(' ', 1), then::size>::result;
+        using meta_then = Match<_then::get(0), _then>;
+        constexpr static const int size = PPString::find(']', PPString::size - _then::size + meta_then::size) + 1;
+        using result = typename MetaMatch<meta_name, meta_param, typename meta_then::result>::result;
+    };
 
     template<literal_string PPString>
     struct Match<'#', PPString> {
