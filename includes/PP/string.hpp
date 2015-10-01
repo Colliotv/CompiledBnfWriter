@@ -97,7 +97,7 @@ namespace PP { // For PreProcessing
     template<class PPString, char ...>
     struct PPStringAdd;
     template<char ... literal_string_1, char ... literal_string_2>
-    struct PPStringAdd<PP::String<literal_string_1...>, literal_string_2...> { using result = typename PP::String< literal_string_1..., literal_string_2...>; };
+    struct PPStringAdd<PP::String<literal_string_1...>, literal_string_2...> { using result = typename PP::String< literal_string_2..., literal_string_1...>; };
 
     template<int , literal_string , char ...>
     struct PPStringFind;
@@ -118,16 +118,34 @@ namespace PP { // For PreProcessing
     template<int it, literal_string PPStringIn>
     struct PPStringFind<it, PPStringIn> { constexpr static const int value = -1; };
 
+    template<char c, typename R, char ... literal_string_ >
+    struct PPStringStrip;
+
+    template<char c, char ... R>
+    struct PPStringStrip<c, PP::String<R...> > {
+        using result = PP::String<R...>;
+    };
+
+    template<char c, char head, char ... tail, char ... R>
+    struct PPStringStrip<c, PP::String<R...>, head, tail...> {
+        using result = typename PPStringStrip<c, PP::String<R..., head>, tail... >::result;
+    };
+
+    template<char c, char ... tail, char ...R >
+    struct PPStringStrip<c,  PP::String<R...>, c, tail... > {
+        using result = typename PPStringStrip<c, PP::String<R...>, tail... >::result;
+    };
+
     template <char ... literal_string_>
     class String {
     public:
         static const                std::string value;
         constexpr static const int  size = sizeof...(literal_string_);
 
-        constexpr static char       get(int i) { return SubChar<literal_string_..., 0>::get(i);}
+        constexpr static char       get(int i) { return i < 0 ? 0 : SubChar<literal_string_..., 0>::get(i);}
         constexpr static const int  find(char c, int off = 0) { return SubChar<literal_string_..., 0>::find(c, off, 0); }
-        //template<literal_string PPStringIn>
-        //struct                      find_s { constexpr static const int value = PPStringFind<0, PPStringIn, literal_string_...>::value; };
+        template<literal_string PPStringIn>
+        struct                      find_s { constexpr static const int value = PPStringFind<0, PPStringIn, literal_string_...>::value; };
         constexpr static const int  find_first_not_of(char c, int off = 0) { return SubChar<literal_string_..., 0>::find_first_not_of(c, off, 0); }
         template<literal_string PPStringFind>
         constexpr static const int  find_first_not_of_s(int off = 0) { return SubChar<literal_string_..., 0>:: template find_first_not_of_s<PPStringFind>(off, 0); }
@@ -137,8 +155,10 @@ namespace PP { // For PreProcessing
         struct                      equal { static const bool value = PPStringEqual< String<literal_string_...>, PPStringComp >::value; };
         template <int beg, int len>
         struct                      split { using result = typename PPStringSplitBeg<beg, len, PP::String<literal_string_...> >::result; };
-        //template <class PPStringAdded>
-        //struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string_...>::result; };
+        template <class PPStringAdded>
+        struct                      add { using result = typename PPStringAdd<PPStringAdded, literal_string_...>::result; };
+        template<char c>
+        struct                      strip { using result = typename PPStringStrip<c, PP::String<>, literal_string_...>::result; };
     };
 
     template< class string, char ... literal_string_>       struct string_decay;

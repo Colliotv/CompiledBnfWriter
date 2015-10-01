@@ -13,8 +13,10 @@ namespace cBNF {
 
     class Node {
     public:
+        virtual ~Node() = default;
         Node() = default;
         Node(const std::string &value) : _value(value) { }
+        Node(const Node& oth) : _value(oth._value), _context(oth._context) {}
 
     public:
         void                        setValue(const std::string& value) { _value = value; }
