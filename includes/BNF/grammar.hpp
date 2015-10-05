@@ -28,6 +28,7 @@ namespace cBNF {
     template<typename grammar_type>
     struct RegisteredGrammarName;
 
+#define RULE(non_stringified) makePPString(#non_stringified)
 #define REGISTER_GRAMMAR_NAME(grammar_type) \
     template<typename ... childs>   struct cBNF::RegisteredGrammarName< grammar_type<childs...> >{\
         using name = makePPString( #grammar_type ); \
@@ -70,12 +71,37 @@ namespace cBNF {
 
         void newRuleContext() { _rule_context.reset(new cBNF::Node); }
 
+    public:
+        enum class ignoreFlag{None, CppC};
     private:
         std::string _ignored;
+        ignoreFlag  _ignore_flag;
 
     public:
+        void setIgnoreFlag(ignoreFlag flag) { _ignore_flag = flag; }
+        ignoreFlag getIgnoreFlag() { return _ignore_flag; }
         bool isIgnored(char c) { return _ignored.find(c) != std::string::npos; }
+        void eatIgnored() {
+            bool stop(false);
 
+            while (!stop){
+                while (isIgnored(pickChar())) eatChar();
+                if (_ignore_flag == ignoreFlag::None)
+                    return;
+                stop = true;
+                if (_ignore_flag == ignoreFlag::CppC) {
+                    if (pickString(sizeof("//") - 1) == "//") { eatString(sizeof("//") - 1);
+                        while (stream_cursor != stream_buffer.end() || pickChar() != '\n') eatChar();
+                        stop = false;
+                    }
+                    if (pickString(sizeof("/*") - 1) == "/*") {eatString(sizeof("/*") - 1);
+                        while (pickString(sizeof("*/")-1) != "*/") eatChar();
+                        eatString(sizeof("/*") - 1);
+                        stop = false;
+                    }
+                }
+            }
+        }
         void          setIgnored(const std::string &_ignored) { Grammar::_ignored = _ignored; }
         std::string   getIgnored() { return _ignored; }
     private:
@@ -109,6 +135,15 @@ namespace cBNF {
             return std::string(beg, stream_cursor);
         }
 
+        std::string pickString(std::size_t string_size) {
+            if (std::distance(stream_cursor, stream_buffer.end()) < string_size)
+                throw EofException();
+
+            std::string::iterator beg = stream_cursor;
+            std::string::iterator end = stream_cursor;
+            std::advance(end, string_size);
+            return std::string(beg, end);
+        }
     public:
         Context getContext() { return stream_cursor; }
 
@@ -204,13 +239,23 @@ struct Or{};
 template <typename ... grammar_nodes >
 struct And{};
 
-
+/**
+ * Node Fixing the lifetime of a variable
+ */
+template<typename grammar_node>
+struct LifeTime;
 
 /**
  * node corresponding to [ grammar_node:var# ]
  */
 template <typename grammar_node, literal_string PPString>
 struct Extract{};
+
+/**
+ * node corresponding to [ __scope__:var ]
+ */
+template<typename grammar_node, literal_string PPString>
+struct SaveScope;
 
 /**
  * node corresponding to [ grammar_node #call_hook(context, variables)]
@@ -229,14 +274,16 @@ struct MatchOverridedRule{};
 
 /**
  * node corresponding to @ignore('char', 'char', 'char', ...)
- * variations are : IgnoreNull, IgnoreBlanks(default)
+ * variations are : IgnoreNull, IgnoreBlanks(default), IgnoreCppC
  */
 template < typename grammar_node, char ... characters>
 struct Ignore{};
 template< typename grammar_node >
-using IgnoreNull = Ignore<grammar_node>;
+using  IgnoreNull = Ignore<grammar_node>;
 template< typename grammar_node >
-using IgnoreBlanks = Ignore<grammar_node, ' ', '\n', '\t', '\r'>;
+using  IgnoreBlanks = Ignore<grammar_node, ' ', '\n', '\t', '\v', '\f', '\r'>;
+template<typename grammar_node>
+struct IgnoreCppC;
 
 
 
@@ -298,7 +345,7 @@ namespace cBNF {
                 bool valid(false);
                 typename Parser::Context context(parser.getContext());
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { }
                 typename Parser::Context subcontext(parser.getContext());
@@ -314,6 +361,15 @@ namespace cBNF {
                 while (1);
             }
         };
+        template<typename Parser, typename grammar_node>
+        struct for_<Parser, LifeTime<grammar_node>>{
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table) {
+                cBNF::varTable::LifeTimeToken token(table.getLifeTimeToken());
+                std::shared_ptr<cBNF::Node> res(for_<Parser, grammar_node>::do_(parser, table));
+                table.substractLifeTime(token);
+                return res;
+            }
+        };
 
         template<class Parser, typename grammar_node>
         struct for_<Parser, PossibleRepeat<grammar_node>> {
@@ -322,7 +378,7 @@ namespace cBNF {
                 typename Parser::Context context(parser.getContext());
                 bool matched(false);
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { }
                 typename Parser::Context subcontext(parser.getContext());
@@ -340,7 +396,7 @@ namespace cBNF {
                 typename Parser::Context context(parser.getContext());
                 bool matched(false);
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { }
                 typename Parser::Context subcontext(parser.getContext());
@@ -372,7 +428,7 @@ namespace cBNF {
             {
                 typename Parser::Context context(parser.getContext());
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { }
                 typename Parser::Context subcontext(parser.getContext());
@@ -401,7 +457,7 @@ namespace cBNF {
             {
                 typename Parser::Context context(parser.getContext());
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { }
                 typename Parser::Context subcontext(parser.getContext());
@@ -410,6 +466,14 @@ namespace cBNF {
                 return std::make_shared<cBNF::Node>(std::string(subcontext, parser.getContext()));
             }
         };
+        template<class Parser>
+        struct for_<Parser, And<>> {
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
+            {
+                return std::make_shared<cBNF::Node>();
+            }
+        };
+
 
         template<class Parser, typename grammar_node, literal_string PPString>
         struct for_<Parser, Extract<grammar_node, PPString> > {
@@ -464,13 +528,27 @@ namespace cBNF {
 
         template<class Parser, typename grammar_node, char ... characters>
         struct for_<Parser, Ignore<grammar_node, characters...> > {
-            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table, typename Parser::ignoreFlag flag = Parser::ignoreFlag::None)
             {
+                typename Parser::ignoreFlag last_flag(parser.getIgnoreFlag());
                 std::string last_ignored(parser.getIgnored());
+
+                parser.setIgnoreFlag(flag);
                 parser.setIgnored(PP::String<characters...>::value);
+
                 std::shared_ptr<cBNF::Node> res(for_<Parser, grammar_node>::do_(parser, table));
+
+                parser.setIgnoreFlag(last_flag);
                 parser.setIgnored(last_ignored);
                 return res;
+            }
+        };
+
+        template<typename Parser, typename grammar_node>
+        struct for_<Parser, IgnoreCppC<grammar_node> >{
+            inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
+            {
+                return for_<Parser, IgnoreBlanks<grammar_node> >::do_(parser, table, Parser::ignoreFlag::CppC);
             }
         };
 
@@ -480,7 +558,7 @@ namespace cBNF {
             {
                 typename Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                     char c = parser.eatChar();
                     if (c<=c2 && c>=c1)
                         return std::make_shared<cBNF::Node>(std::string(1, c));
@@ -496,7 +574,7 @@ namespace cBNF {
             {
                 typename Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                     if (parser.eatChar()==c)
                         return std::make_shared<cBNF::Node>(std::string(1, c));
                 }
@@ -511,7 +589,7 @@ namespace cBNF {
             {
                 typename Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                     std::string _match = parser.eatString(PPString::value.size());
                     if (_match!=PPString::value)
                         return (parser.restoreContext(context), nullptr);
@@ -529,7 +607,7 @@ namespace cBNF {
             {
                 typename Parser::Context context = parser.getContext();
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                     typename Parser::Context subcontext = parser.getContext();
                     if (parser.eatChar()!='"')
                         return (parser.restoreContext(context), nullptr);
@@ -562,7 +640,7 @@ namespace cBNF {
             inline static std::shared_ptr<cBNF::Node> do_(Parser& parser, cBNF::varTable& table)
             {
                 try {
-                    while (parser.isIgnored(parser.pickChar())) parser.eatChar();
+                    parser.eatIgnored();
                 }
                 catch (EofException) { return std::make_shared<cBNF::Node>(); }
                 return nullptr;
@@ -924,6 +1002,32 @@ namespace cBNF {
         using result = typename next::result;
         constexpr static const int size = next::size + (PPString::size - next_string::size);
     };
+
+    template<typename, typename, typename ...>
+    struct ToOR;
+    template<template<typename...>class filling, typename ...in, typename OR, typename head>
+    struct ToOR<filling<in...>, OR, head> {
+        using result = filling<in..., Or<OR, head> >;
+    };
+    template<template<typename...>class filling, typename ...orin, typename ...in, typename head>
+    struct ToOR<filling<in...>, Or<orin...>, head> {
+        using result = filling <in..., Or<orin..., head>>;
+    };
+
+    template<template<typename ... >class filling, typename ...in, typename OR, typename head, typename head2, typename ... tail>
+    struct ToOR<filling<in...>, OR, head, head2, tail...>{
+        using result = typename ToOR< filling<in..., OR>, head, head2, tail...>::result;
+    };
+
+    template<template<typename ...>class filling, typename... tail, literal_string PPString>
+    struct Fill< filling<tail...>, PPString, '|'>{
+        using next_string = typename PPString:: template split<PPString::find_first_not_of(' ', 1), PPString::size>::result;
+        using sub_next = Fill< filling<tail...>, next_string, next_string::get(0)>;
+        using next = Fill< typename ToOR< filling<>, tail..., typename sub_next::sub_type::result >::result, typename sub_next::next_string, sub_next::next_string::get(0)>;
+        using result = typename next::result;
+        constexpr static const int size = 1 + (PPString::size - next_string::size);
+    };
+
     template< template <typename ...>class filling, typename ...  head, literal_string PPString>
     struct Fill< filling<head...>, PPString, ']' >{
         constexpr static const int size = 1;
@@ -935,6 +1039,13 @@ namespace cBNF {
         using and_result = Fill< And<>, typename PPString:: template split<PPString::find_first_not_of(' ', 2), PPString::size>::result, PPString::get(PPString::find_first_not_of(' ', 2)) >;
         using result = typename and_result::result;
         constexpr static const int size = and_result::size + PPString::find_first_not_of(' ', 2);
+    };
+
+    template<literal_string PPString>
+    struct Match<'[', PPString> {
+        using and_result = Fill< And<>, typename PPString:: template split<PPString::find_first_not_of(' ', 1), PPString::size>::result, PPString::get(PPString::find_first_not_of(' ', 2)) >;
+        using result = LifeTime< typename and_result::result >;
+        constexpr static const int size = and_result::size + PPString::find_first_not_of(' ', 1);
     };
 
     template<literal_string PPString>
@@ -970,6 +1081,11 @@ namespace cBNF {
         using result = IgnoreBlanks<then>;
     };
 
+    template<typename then>
+    struct MetaMatch<makePPString("ignore"), makePPString("\"c/c++\""), then> {
+        using result = IgnoreCppC<then>;
+    };
+
     template<literal_string PPString>
     struct Match<'@', PPString> {
         using meta_name = typename PPString:: template split<1, PPString::find('(', 1) - 1>:: result;
@@ -985,6 +1101,21 @@ namespace cBNF {
     struct Match<'#', PPString> {
         using name = typename PPString:: template split<1, PPString::find('[') - 1>::result;
         using result = Callback< typename Match<
+                PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+        >::result, name >;
+        constexpr static const int _subsize =
+                Match<
+                        PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
+                        typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
+                >::size;
+        constexpr static const int size = PPString::find(']', PPString::find_first_not_of(' ', PPString::find('[') + 1) + _subsize) + 1;
+    };
+
+    template<literal_string PPString>
+    struct Match<'>', PPString> {
+        using name = typename PPString:: template split<1, PPString::find('[') - 1>::result;
+        using result = SaveScope< typename Match<
                 PPString::get( PPString::find_first_not_of(' ', PPString::find('[') + 1) ),
                 typename PPString:: template split< PPString::find_first_not_of(' ', PPString::find('[') + 1), PPString::size >::result
         >::result, name >;
